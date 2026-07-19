@@ -8,7 +8,103 @@ generator client {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  createdAt DateTime @default(now())
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+  sessions      Session[]
+  settings      Settings?
+  watchlists    Watchlist[]
+  tradeJournals TradeJournal[]
+}
+
+model Session {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token           String    @unique
+  kiteAccessToken String?
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  @@index([userId, token])
+}
+
+model Settings {
+  id            String    @id @default(uuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme         String    @default("dark")
+  paperTrading  Boolean   @default(false)
+  kiteApiKey    String?
+  kiteApiSecret String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+}
+
+model Watchlist {
+  id        String          @id @default(uuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  items     WatchlistItem[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId])
+}
+
+model WatchlistItem {
+  id          String    @id @default(uuid())
+  watchlistId String
+  watchlist   Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  symbol      String
+  createdAt   DateTime  @default(now())
+}
+
+model TradeJournal {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol      String
+  direction   String
+  entryPrice  Float
+  exitPrice   Float?
+  quantity    Int
+  pnl         Float?
+  status      String
+  entryTime   DateTime
+  exitTime    DateTime?
+  emotion     String?
+  mistake     String?
+  lesson      String?
+  reason      String?
+  tags        String[]
+  notes       TradeNote[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  @@index([userId])
+  @@index([symbol])
+  @@index([entryTime])
+  @@index([deletedAt])
+}
+
+model TradeNote {
+  id             String       @id @default(uuid())
+  tradeJournalId String
+  tradeJournal   TradeJournal @relation(fields: [tradeJournalId], references: [id], onDelete: Cascade)
+  content        String       @db.Text
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  @@index([tradeJournalId])
 }
