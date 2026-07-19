@@ -17,9 +17,24 @@ import {
   CardContent,
 } from "../components/ui/Card.js";
 import { Badge } from "../components/ui/Badge.js";
-import { LogIn, HelpCircle, ListTodo, BookOpen } from "lucide-react";
 import { useAuthStore } from "../store/authStore.js";
 import { AuthCallbackPage } from "./AuthCallback.js";
+import { useQuery } from "@tanstack/react-query";
+import {
+  MarginInfo,
+  HoldingInfo,
+  PositionInfo,
+  OrderInfo,
+} from "@trading-lab/shared";
+import {
+  LogIn,
+  HelpCircle,
+  ListTodo,
+  BookOpen,
+  TrendingUp,
+  TrendingDown,
+  ShieldAlert,
+} from "lucide-react";
 
 // 1. Root Route
 const rootRoute = createRootRoute({
@@ -90,11 +105,114 @@ const authLayoutRoute = createRoute({
 });
 
 // 3. Pages
-// Dashboard Page
-const dashboardRoute = createRoute({
-  getParentRoute: () => dashboardLayoutRoute,
-  path: "/",
-  component: () => (
+const fetchWithAuth = async <T,>(url: string): Promise<T> => {
+  const token = localStorage.getItem("token");
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`API error: ${res.statusText}`);
+  }
+  return res.json() as Promise<T>;
+};
+
+const DashboardPage = () => {
+  const {
+    data: margins,
+    isLoading: isLoadingMargins,
+    error: errorMargins,
+  } = useQuery<MarginInfo>({
+    queryKey: ["margins"],
+    queryFn: () => fetchWithAuth<MarginInfo>("/api/portfolio/margins"),
+  });
+
+  const {
+    data: holdings,
+    isLoading: isLoadingHoldings,
+    error: errorHoldings,
+  } = useQuery<HoldingInfo[]>({
+    queryKey: ["holdings"],
+    queryFn: () => fetchWithAuth<HoldingInfo[]>("/api/portfolio/holdings"),
+  });
+
+  const {
+    data: positions,
+    isLoading: isLoadingPositions,
+    error: errorPositions,
+  } = useQuery<PositionInfo[]>({
+    queryKey: ["positions"],
+    queryFn: () => fetchWithAuth<PositionInfo[]>("/api/portfolio/positions"),
+  });
+
+  const {
+    data: orders,
+    isLoading: isLoadingOrders,
+    error: errorOrders,
+  } = useQuery<OrderInfo[]>({
+    queryKey: ["orders"],
+    queryFn: () => fetchWithAuth<OrderInfo[]>("/api/portfolio/orders"),
+  });
+
+  const isLoading =
+    isLoadingMargins ||
+    isLoadingHoldings ||
+    isLoadingPositions ||
+    isLoadingOrders;
+  const hasError =
+    errorMargins || errorHoldings || errorPositions || errorOrders;
+
+  const totalHoldingsValue =
+    holdings?.reduce((sum, h) => sum + h.quantity * h.lastPrice, 0) || 0;
+  const totalPositionsPnl = positions?.reduce((sum, p) => sum + p.pnl, 0) || 0;
+  const activePositionsCount =
+    positions?.filter((p) => p.quantity > 0).length || 0;
+  const availableMargin = margins?.available || 0;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="h-8 w-48 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
+          <div className="h-6 w-24 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((n) => (
+            <Card key={n} className="animate-pulse">
+              <CardHeader className="pb-2">
+                <div className="h-4 w-24 bg-gray-200 dark:bg-gray-800 rounded mb-2" />
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 w-32 bg-gray-200 dark:bg-gray-800 rounded" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card className="animate-pulse">
+          <CardContent className="h-48 bg-gray-100 dark:bg-gray-800 rounded-lg" />
+        </Card>
+      </div>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-center text-red-600 dark:text-red-400">
+        <ShieldAlert className="h-12 w-12 mb-4" />
+        <h3 className="text-xl font-bold mb-2">Error Loading Portfolio</h3>
+        <p className="text-sm text-gray-500 max-w-sm mb-4">
+          We encountered an issue fetching your Zerodha Kite portfolio details.
+          Make sure your environment variables are configured.
+        </p>
+        <Button variant="primary" onClick={() => window.location.reload()}>
+          Retry Connection
+        </Button>
+      </div>
+    );
+  }
+
+  return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
         <div>
@@ -120,9 +238,16 @@ const dashboardRoute = createRoute({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹12,45,670.00</div>
-            <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium">
-              +1.8% from last week
+            <div className="text-2xl font-bold">
+              ₹
+              {totalHoldingsValue.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+            <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium flex items-center">
+              <TrendingUp className="h-3 w-3 mr-1" />
+              Equities value
             </p>
           </CardContent>
         </Card>
@@ -134,10 +259,18 @@ const dashboardRoute = createRoute({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-              +₹18,250.00
+            <div
+              className={`text-2xl font-bold ${totalPositionsPnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+            >
+              {totalPositionsPnl >= 0 ? "+" : ""}₹
+              {totalPositionsPnl.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </div>
-            <p className="text-xs text-gray-400 mt-1">10 completed trades</p>
+            <p className="text-xs text-gray-400 mt-1">
+              From active intraday & swing positions
+            </p>
           </CardContent>
         </Card>
 
@@ -148,9 +281,9 @@ const dashboardRoute = createRoute({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">4</div>
-            <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">
-              -₹1,450.00 unrealized
+            <div className="text-2xl font-bold">{activePositionsCount}</div>
+            <p className="text-xs text-gray-400 mt-1">
+              Open holdings with active quantities
             </p>
           </CardContent>
         </Card>
@@ -162,32 +295,217 @@ const dashboardRoute = createRoute({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹2,84,350.00</div>
-            <p className="text-xs text-gray-400 mt-1">Collateral included</p>
+            <div className="text-2xl font-bold">
+              ₹
+              {availableMargin.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+            <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium flex items-center">
+              <TrendingDown className="h-3 w-3 mr-1" />₹
+              {(margins?.utilized || 0).toLocaleString("en-IN")} utilized
+            </p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Holdings & Positions Tables */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Positions Card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Active Positions</CardTitle>
+            <Badge variant="secondary">{positions?.length || 0} Total</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead>
+                  <tr className="border-b dark:border-gray-800 text-gray-500 font-medium">
+                    <th className="pb-2">Symbol</th>
+                    <th className="pb-2 text-right">Qty</th>
+                    <th className="pb-2 text-right">Avg Price</th>
+                    <th className="pb-2 text-right">LTP</th>
+                    <th className="pb-2 text-right">P&L</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {positions?.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="py-4 text-center text-gray-400"
+                      >
+                        No active positions today.
+                      </td>
+                    </tr>
+                  ) : (
+                    positions?.map((pos) => (
+                      <tr key={pos.tradingsymbol}>
+                        <td className="py-3 font-semibold">
+                          {pos.tradingsymbol}{" "}
+                          <span className="text-xs text-gray-400 font-normal">
+                            {pos.exchange}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right">{pos.quantity}</td>
+                        <td className="py-3 text-right">
+                          ₹{pos.averagePrice.toFixed(2)}
+                        </td>
+                        <td className="py-3 text-right">
+                          ₹{pos.lastPrice.toFixed(2)}
+                        </td>
+                        <td
+                          className={`py-3 text-right font-medium ${pos.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+                        >
+                          ₹{pos.pnl.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Holdings Card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Equities Holdings</CardTitle>
+            <Badge variant="secondary">{holdings?.length || 0} Assets</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead>
+                  <tr className="border-b dark:border-gray-800 text-gray-500 font-medium">
+                    <th className="pb-2">Symbol</th>
+                    <th className="pb-2 text-right">Qty</th>
+                    <th className="pb-2 text-right">Avg Price</th>
+                    <th className="pb-2 text-right">LTP</th>
+                    <th className="pb-2 text-right">P&L</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {holdings?.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="py-4 text-center text-gray-400"
+                      >
+                        No stock holdings in portfolio.
+                      </td>
+                    </tr>
+                  ) : (
+                    holdings?.map((h) => (
+                      <tr key={h.tradingsymbol}>
+                        <td className="py-3 font-semibold">
+                          {h.tradingsymbol}{" "}
+                          <span className="text-xs text-gray-400 font-normal">
+                            {h.exchange}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right">{h.quantity}</td>
+                        <td className="py-3 text-right">
+                          ₹{h.averagePrice.toFixed(2)}
+                        </td>
+                        <td className="py-3 text-right">
+                          ₹{h.lastPrice.toFixed(2)}
+                        </td>
+                        <td
+                          className={`py-3 text-right font-medium ${h.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+                        >
+                          ₹{h.pnl.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Orders List */}
       <Card>
         <CardHeader>
-          <CardTitle>Welcome to TradingLab</CardTitle>
+          <CardTitle>Recent Orders</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-            This workspace represents the client dashboard framework. Use the
-            sidebar menu to navigate. The Zerodha Kite Connection settings are
-            located in the settings view.
-          </p>
-          <div className="flex space-x-2">
-            <Button variant="primary">Launch Simulation</Button>
-            <Link to="/settings">
-              <Button variant="secondary">Configure API Keys</Button>
-            </Link>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead>
+                <tr className="border-b dark:border-gray-800 text-gray-500 font-medium">
+                  <th className="pb-2">Order ID</th>
+                  <th className="pb-2">Symbol</th>
+                  <th className="pb-2">Type</th>
+                  <th className="pb-2 text-right">Qty</th>
+                  <th className="pb-2 text-right">Price</th>
+                  <th className="pb-2">Status</th>
+                  <th className="pb-2">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {orders?.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-4 text-center text-gray-400">
+                      No orders placed today.
+                    </td>
+                  </tr>
+                ) : (
+                  orders?.map((order) => (
+                    <tr key={order.orderId}>
+                      <td className="py-3 text-gray-500 text-xs">
+                        {order.orderId}
+                      </td>
+                      <td className="py-3 font-semibold">
+                        {order.tradingsymbol}
+                      </td>
+                      <td className="py-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs font-semibold ${order.transactionType === "BUY" ? "bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-400" : "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-400"}`}
+                        >
+                          {order.transactionType}
+                        </span>
+                      </td>
+                      <td className="py-3 text-right">{order.quantity}</td>
+                      <td className="py-3 text-right">
+                        ₹{order.price.toFixed(2)}
+                      </td>
+                      <td className="py-3">
+                        <Badge
+                          variant={
+                            order.status === "COMPLETE"
+                              ? "success"
+                              : "secondary"
+                          }
+                        >
+                          {order.status}
+                        </Badge>
+                      </td>
+                      <td className="py-3 text-gray-400 text-xs">
+                        {new Date(order.timestamp).toLocaleTimeString()}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </CardContent>
       </Card>
     </div>
-  ),
+  );
+};
+
+// Dashboard Page
+const dashboardRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: "/",
+  component: DashboardPage,
 });
 
 // Watchlist Page

@@ -20,5 +20,9 @@ declare module "kiteconnect" {
       api_secret: string,
     ): Promise<KiteSession>;
     public setAccessToken(access_token: string): void;
+    public getMargins(): Promise<unknown>;
+    public getHoldings(): Promise<unknown>;
+    public getPositions(): Promise<unknown>;
+    public getOrders(): Promise<unknown>;
   }
 }
