@@ -4,6 +4,7 @@ import {
   createRouter,
   Outlet,
   Link,
+  redirect,
 } from "@tanstack/react-router";
 import { Sidebar } from "../components/Sidebar.js";
 import { TopNav } from "../components/TopNav.js";
@@ -18,6 +19,7 @@ import {
 import { Badge } from "../components/ui/Badge.js";
 import { LogIn, HelpCircle, ListTodo, BookOpen } from "lucide-react";
 import { useAuthStore } from "../store/authStore.js";
+import { AuthCallbackPage } from "./AuthCallback.js";
 
 // 1. Root Route
 const rootRoute = createRootRoute({
@@ -35,6 +37,12 @@ const rootRoute = createRootRoute({
 const dashboardLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "dashboard-layout",
+  beforeLoad: () => {
+    const state = useAuthStore.getState();
+    if (!state.isAuthenticated) {
+      throw redirect({ to: "/auth/login" });
+    }
+  },
   component: () => (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
@@ -290,15 +298,19 @@ const settingsRoute = createRoute({
 
 // Login Page Component
 const LoginPage = () => {
-  const { login } = useAuthStore();
   const handleLogin = () => {
-    login({
-      id: "mock-user-uuid-1234",
-      email: "trader.joe@trading.lab",
-      name: "Trader Joe",
-      createdAt: new Date(),
-    });
-    window.location.href = "/";
+    fetch("/api/auth/login-url")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load login URL");
+        return res.json() as Promise<{ loginUrl: string }>;
+      })
+      .then((data) => {
+        window.location.href = data.loginUrl;
+      })
+      .catch((err) => {
+        console.error("Failed to load login URL, falling back to mock:", err);
+        window.location.href = "/auth/callback?request_token=mock_token_123";
+      });
   };
 
   return (
@@ -334,6 +346,13 @@ const loginRoute = createRoute({
   component: LoginPage,
 });
 
+// Auth Callback Route
+const authCallbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/auth/callback",
+  component: AuthCallbackPage,
+});
+
 // 4. NotFoundRoute
 const notFoundRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -364,6 +383,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
   ]),
   authLayoutRoute.addChildren([loginRoute]),
+  authCallbackRoute,
   notFoundRoute,
 ]);
 
