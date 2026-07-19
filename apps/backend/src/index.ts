@@ -6,6 +6,7 @@ import { prisma } from "./config/prisma.js";
 import { requestLoggerMiddleware } from "./middleware/request-logger.middleware.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 import apiRouter from "./routes/index.js";
+import { instrumentService } from "./services/instrument.service.js";
 
 const app = express();
 
@@ -23,6 +24,9 @@ const server = app.listen(env.PORT, () => {
   logger.info(
     `Backend server successfully running in [${env.NODE_ENV}] mode on port ${env.PORT}`,
   );
+  instrumentService.initialize().catch((err) => {
+    logger.error("Failed to pre-load daily instruments:", err);
+  });
 });
 
 // Graceful Shutdown handler

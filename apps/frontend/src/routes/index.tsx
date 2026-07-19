@@ -17,6 +17,7 @@ import {
   CardContent,
 } from "../components/ui/Card.js";
 import { Badge } from "../components/ui/Badge.js";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "../store/authStore.js";
 import { AuthCallbackPage } from "./AuthCallback.js";
 import { useQuery } from "@tanstack/react-query";
@@ -34,6 +35,9 @@ import {
   TrendingUp,
   TrendingDown,
   ShieldAlert,
+  Plus,
+  Trash2,
+  Search,
 } from "lucide-react";
 
 // 1. Root Route
@@ -508,35 +512,415 @@ const dashboardRoute = createRoute({
   component: DashboardPage,
 });
 
+interface WatchlistItemData {
+  id: string;
+  symbol: string;
+}
+
+interface WatchlistData {
+  id: string;
+  name: string;
+  items: WatchlistItemData[];
+}
+
+interface InstrumentMatch {
+  tradingsymbol: string;
+  name: string;
+  exchange: string;
+}
+
+const WatchlistPage = () => {
+  const [activeWatchlistId, setActiveWatchlistId] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [newWatchlistName, setNewWatchlistName] = useState<string>("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [prices, setPrices] = useState<
+    Record<string, { ltp: number; change: number }>
+  >({});
+
+  const {
+    data: watchlists,
+    isLoading,
+    refetch,
+  } = useQuery<WatchlistData[]>({
+    queryKey: ["watchlists"],
+    queryFn: () => fetchWithAuth<WatchlistData[]>("/api/watchlists"),
+  });
+
+  const { data: searchResults } = useQuery<InstrumentMatch[]>({
+    queryKey: ["instruments-search", searchQuery],
+    queryFn: () =>
+      fetchWithAuth<InstrumentMatch[]>(
+        `/api/instruments/search?q=${searchQuery}`,
+      ),
+    enabled: searchQuery.length >= 2,
+  });
+
+  useEffect(() => {
+    if (watchlists && watchlists.length > 0 && !activeWatchlistId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveWatchlistId(watchlists[0].id);
+    }
+  }, [watchlists, activeWatchlistId]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPrices((prev) => {
+        const next = { ...prev };
+        const activeWatchlist = watchlists?.find(
+          (w) => w.id === activeWatchlistId,
+        );
+        if (!activeWatchlist) return prev;
+
+        for (const item of activeWatchlist.items) {
+          const current = prev[item.symbol] || {
+            ltp: 100 + Math.random() * 2000,
+            change: -2 + Math.random() * 4,
+          };
+          const deltaPercent = (Math.random() - 0.5) * 0.3;
+          const newLtp = current.ltp * (1 + deltaPercent / 100);
+          const newChange = current.change + deltaPercent;
+
+          next[item.symbol] = {
+            ltp: newLtp,
+            change: newChange,
+          };
+        }
+        return next;
+      });
+    }, 2500);
+
+    return () => clearInterval(timer);
+  }, [watchlists, activeWatchlistId]);
+
+  const activeWatchlist = watchlists?.find((w) => w.id === activeWatchlistId);
+
+  const handleCreateWatchlist = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWatchlistName.trim()) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/watchlists", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: newWatchlistName }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as WatchlistData;
+        setNewWatchlistName("");
+        setIsCreating(false);
+        await refetch();
+        setActiveWatchlistId(data.id);
+      }
+    } catch (err) {
+      console.error("Failed to create watchlist:", err);
+    }
+  };
+
+  const handleDeleteWatchlist = async () => {
+    if (!activeWatchlistId) return;
+    if (!confirm("Are you sure you want to delete this watchlist?")) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/watchlists/${activeWatchlistId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        setActiveWatchlistId("");
+        await refetch();
+      }
+    } catch (err) {
+      console.error("Failed to delete watchlist:", err);
+    }
+  };
+
+  const handleAddSymbol = async (symbol: string) => {
+    if (!activeWatchlistId) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/watchlists/${activeWatchlistId}/symbol`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ symbol }),
+      });
+      if (res.ok) {
+        setSearchQuery("");
+        await refetch();
+      }
+    } catch (err) {
+      console.error("Failed to add symbol:", err);
+    }
+  };
+
+  const handleRemoveSymbol = async (symbol: string) => {
+    if (!activeWatchlistId) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `/api/watchlists/${activeWatchlistId}/symbol/remove`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ symbol }),
+        },
+      );
+      if (res.ok) {
+        await refetch();
+      }
+    } catch (err) {
+      console.error("Failed to remove symbol:", err);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 w-48 bg-gray-200 dark:bg-gray-800 rounded" />
+        <div className="h-12 w-full bg-gray-200 dark:bg-gray-800 rounded" />
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((n) => (
+            <div
+              key={n}
+              className="h-24 bg-gray-200 dark:bg-gray-800 rounded"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">
+            Market Watchlist
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
+            Monitor real-time quote feeds and setup alerts.
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          {activeWatchlist && (
+            <Button
+              variant="secondary"
+              onClick={handleDeleteWatchlist}
+              className="text-red-500 hover:text-red-600"
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete List
+            </Button>
+          )}
+          <Button variant="primary" onClick={() => setIsCreating(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            New List
+          </Button>
+        </div>
+      </div>
+
+      {isCreating && (
+        <Card className="p-4 border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20">
+          <form
+            onSubmit={handleCreateWatchlist}
+            className="flex flex-col sm:flex-row items-end sm:items-center gap-3"
+          >
+            <div className="flex-1 w-full">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+                New List Name
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Swing Watchlist, Options Tracker"
+                value={newWatchlistName}
+                onChange={(e) => setNewWatchlistName(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                required
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="primary" type="submit">
+                Create
+              </Button>
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setIsCreating(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {watchlists && watchlists.length > 0 ? (
+        <div className="border-b dark:border-gray-800 flex items-center space-x-1 overflow-x-auto pb-px">
+          {watchlists.map((w) => (
+            <button
+              key={w.id}
+              onClick={() => setActiveWatchlistId(w.id)}
+              className={`px-4 py-2 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors ${
+                activeWatchlistId === w.id
+                  ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                  : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              }`}
+            >
+              {w.name}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="text-gray-400 text-sm py-4">
+          No watchlists configured. Create one to begin.
+        </div>
+      )}
+
+      {activeWatchlistId && (
+        <div className="relative max-w-md">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+            <Search className="h-4 w-4" />
+          </div>
+          <input
+            type="text"
+            placeholder="Search instruments (e.g. RELIANCE, TCS, INFY)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-gray-950 border dark:border-gray-800 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          />
+
+          {searchQuery.length >= 2 && searchResults && (
+            <Card className="absolute z-20 mt-1 w-full max-h-60 overflow-y-auto shadow-lg border dark:border-gray-800 bg-white dark:bg-gray-950 divide-y divide-gray-100 dark:divide-gray-850">
+              {searchResults.length === 0 ? (
+                <div className="p-3 text-sm text-gray-500 text-center">
+                  No matching instruments found.
+                </div>
+              ) : (
+                searchResults.map((inst) => (
+                  <div
+                    key={inst.tradingsymbol}
+                    onClick={() =>
+                      handleAddSymbol(`${inst.exchange}:${inst.tradingsymbol}`)
+                    }
+                    className="flex justify-between items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-900 cursor-pointer transition-colors"
+                  >
+                    <div>
+                      <div className="font-semibold text-sm">
+                        {inst.tradingsymbol}
+                      </div>
+                      <div className="text-xs text-gray-400">{inst.name}</div>
+                    </div>
+                    <Badge variant="secondary">{inst.exchange}</Badge>
+                  </div>
+                ))
+              )}
+            </Card>
+          )}
+        </div>
+      )}
+
+      {activeWatchlist && (
+        <>
+          {activeWatchlist.items.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center p-12 text-center">
+                <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4">
+                  <ListTodo className="h-6 w-6" />
+                </div>
+                <h3 className="font-semibold text-lg mb-1">
+                  Watchlist is Empty
+                </h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm max-w-sm mb-4">
+                  Use the instrument search bar above to look up stock symbols
+                  and add them to this list.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              {activeWatchlist.items.map((item) => {
+                const parts = item.symbol.split(":");
+                const displayName = parts[1] || parts[0];
+                const exchange = parts[1] ? parts[0] : "NSE";
+
+                const priceData = prices[item.symbol] || {
+                  ltp: 150.0,
+                  change: 0.0,
+                };
+                const isPositive = priceData.change >= 0;
+
+                return (
+                  <Card
+                    key={item.id}
+                    className="relative group overflow-hidden border dark:border-gray-800 hover:border-blue-400 dark:hover:border-blue-900 transition-all duration-300"
+                  >
+                    <CardContent className="p-4 flex justify-between items-center">
+                      <div>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-bold text-base">
+                            {displayName}
+                          </span>
+                          <span className="text-[10px] uppercase font-semibold text-gray-400 tracking-wider">
+                            {exchange}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-baseline space-x-2">
+                          <span className="font-semibold text-lg">
+                            ₹
+                            {priceData.ltp.toLocaleString("en-IN", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                          <span
+                            className={`text-xs font-semibold flex items-center ${isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+                          >
+                            {isPositive ? "+" : ""}
+                            {priceData.change.toFixed(2)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleRemoveSymbol(item.symbol)}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-gray-400 hover:text-red-500 transition-all duration-200"
+                        title="Remove symbol"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 // Watchlist Page
 const watchlistRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: "/watchlist",
-  component: () => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Market Watchlist</h2>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
-          Monitor index values and custom stocks.
-        </p>
-      </div>
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center p-12 text-center">
-          <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4">
-            <ListTodo className="h-6 w-6" />
-          </div>
-          <h3 className="font-semibold text-lg mb-1">
-            Your Watchlist is Empty
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400 text-sm max-w-sm mb-4">
-            Create custom list filters or search symbols to begin monitoring
-            indices.
-          </p>
-          <Button variant="primary">Add Symbol</Button>
-        </CardContent>
-      </Card>
-    </div>
-  ),
+  component: WatchlistPage,
 });
 
 // Journal Page
