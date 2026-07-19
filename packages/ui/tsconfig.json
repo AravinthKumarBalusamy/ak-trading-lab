@@ -1,0 +1,12 @@
+{
+  "extends": "@trading-lab/config/tsconfig/react.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "declaration": true,
+    "declarationMap": true
+  },
+  "include": ["src/**/*"]
+}

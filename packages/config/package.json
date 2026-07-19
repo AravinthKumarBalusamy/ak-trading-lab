@@ -1,0 +1,10 @@
+{
+  "name": "@trading-lab/config",
+  "version": "1.0.0",
+  "private": true,
+  "main": "",
+  "files": [
+    "tsconfig",
+    "eslint"
+  ]
+}
