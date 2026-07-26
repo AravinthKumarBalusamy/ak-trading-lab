@@ -17,4 +17,11 @@ router.use("/instruments", instrumentRouter);
 router.use("/trades", tradeRouter);
 router.use("/analytics", analyticsRouter);
 
+router.get("/kite/callback", (req, res) => {
+  const { request_token } = req.query;
+  res.redirect(
+    `http://localhost:8080/auth/callback?request_token=${request_token}`,
+  );
+});
+
 export default router;
