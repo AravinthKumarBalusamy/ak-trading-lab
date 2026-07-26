@@ -40,6 +40,7 @@ import {
   Calendar,
   MessageSquare,
   Filter,
+  Sparkles,
 } from "lucide-react";
 
 // 1. Root Route
@@ -2091,6 +2092,17 @@ const LoginPage = () => {
         >
           <LogIn className="h-4 w-4" />
           <span>Connect Zerodha Kite</span>
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-full flex items-center justify-center space-x-2 border border-blue-200 dark:border-blue-900 bg-blue-50/20 text-blue-600 dark:text-blue-400 hover:bg-blue-50/50"
+          onClick={() => {
+            window.location.href =
+              "/auth/callback?request_token=mock_token_123";
+          }}
+        >
+          <Sparkles className="h-4 w-4" />
+          <span>Mock Sandbox Bypass</span>
         </Button>
         <div className="flex items-center justify-center space-x-1 text-xs text-gray-400">
           <HelpCircle className="h-3 w-3" />
