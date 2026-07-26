@@ -40,6 +40,12 @@ import {
   Calendar,
   MessageSquare,
   Filter,
+  CircleDollarSign,
+  Percent,
+  Info,
+  Activity,
+  AlertCircle,
+  Briefcase,
 } from "lucide-react";
 
 // 1. Root Route
@@ -202,20 +208,56 @@ const DashboardPage = () => {
 
   const totalHoldingsValue =
     holdings?.reduce((sum, h) => sum + h.quantity * h.lastPrice, 0) || 0;
+  const investedHoldingsValue =
+    holdings?.reduce((sum, h) => sum + h.quantity * h.averagePrice, 0) || 0;
+  const totalHoldingsPnl = holdings?.reduce((sum, h) => sum + h.pnl, 0) || 0;
+
   const totalPositionsPnl = positions?.reduce((sum, p) => sum + p.pnl, 0) || 0;
   const activePositionsCount =
     positions?.filter((p) => p.quantity > 0).length || 0;
   const availableMargin = margins?.available || 0;
 
+  const totalNetAssetValue =
+    totalHoldingsValue + totalPositionsPnl + availableMargin;
+  const todayChangePercent =
+    totalNetAssetValue > 0
+      ? (totalPositionsPnl / (totalHoldingsValue + availableMargin)) * 100
+      : 0;
+  const overallHoldingsReturnPercent =
+    investedHoldingsValue > 0
+      ? (totalHoldingsPnl / investedHoldingsValue) * 100
+      : 0;
+
+  // Deriving Portfolio Insights
+  const largestHolding =
+    holdings && holdings.length > 0
+      ? [...holdings].sort(
+          (a, b) => b.quantity * b.lastPrice - a.quantity * a.lastPrice,
+        )[0]
+      : null;
+
+  const bestPerformer =
+    holdings && holdings.length > 0
+      ? [...holdings].sort((a, b) => b.pnl - a.pnl)[0]
+      : null;
+
+  const worstPerformer =
+    holdings && holdings.length > 0
+      ? [...holdings].sort((a, b) => a.pnl - b.pnl)[0]
+      : null;
+
+  const cashAllocationPercent =
+    totalNetAssetValue > 0 ? (availableMargin / totalNetAssetValue) * 100 : 0;
+
   const renderWinRateGauge = (winRate: number) => {
-    const radius = 32;
-    const stroke = 6;
+    const radius = 28;
+    const stroke = 5;
     const normalizedRadius = radius - stroke * 2;
     const circumference = normalizedRadius * 2 * Math.PI;
     const strokeDashoffset = circumference - (winRate / 100) * circumference;
 
     return (
-      <div className="relative flex items-center justify-center">
+      <div className="relative flex items-center justify-center select-none">
         <svg
           height={radius * 2}
           width={radius * 2}
@@ -243,7 +285,7 @@ const DashboardPage = () => {
             className="transition-all duration-500"
           />
         </svg>
-        <span className="absolute text-xs font-bold">
+        <span className="absolute text-[10px] font-bold text-gray-800 dark:text-gray-200">
           {Math.round(winRate)}%
         </span>
       </div>
@@ -257,9 +299,15 @@ const DashboardPage = () => {
       analytics.equityCurve.length < 2
     ) {
       return (
-        <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
-          Insufficient trade data to render equity curve. Log closed trades in
-          your journal.
+        <div className="flex flex-col items-center justify-center h-48 border border-dashed dark:border-gray-800 rounded bg-gray-50/10 dark:bg-gray-900/5 p-6 text-center select-none">
+          <Activity className="h-8 w-8 text-gray-300 dark:text-gray-700 mb-2" />
+          <span className="text-xs font-semibold text-gray-400 dark:text-gray-500">
+            No Equity Curve Available
+          </span>
+          <p className="text-[10px] text-gray-500 max-w-xs mt-1">
+            Log closed trade entries in your journal to calculate historic net
+            worth progression.
+          </p>
         </div>
       );
     }
@@ -285,7 +333,7 @@ const DashboardPage = () => {
       const y =
         paddingTop +
         chartHeight -
-        ((c.equity - minVal) / valRange) * chartHeight;
+        ((c.equity - minVal) / (valRange || 1)) * chartHeight;
       return { x, y, ...c };
     });
 
@@ -309,7 +357,7 @@ const DashboardPage = () => {
         >
           <defs>
             <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.4" />
+              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3" />
               <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
             </linearGradient>
           </defs>
@@ -324,7 +372,7 @@ const DashboardPage = () => {
                 stroke="currentColor"
                 strokeWidth="0.5"
                 strokeDasharray="4 4"
-                className="text-gray-300 dark:text-gray-800"
+                className="text-gray-200 dark:text-gray-800"
               />
               <text
                 x={paddingLeft - 8}
@@ -342,7 +390,7 @@ const DashboardPage = () => {
             d={linePath}
             fill="none"
             stroke="#3b82f6"
-            strokeWidth="2"
+            strokeWidth="1.5"
             strokeLinecap="round"
           />
 
@@ -351,8 +399,8 @@ const DashboardPage = () => {
               <circle
                 cx={p.x}
                 cy={p.y}
-                r="3"
-                className="fill-blue-500 stroke-white dark:stroke-gray-900 stroke-2 hover:r-4 transition-all duration-150"
+                r="2.5"
+                className="fill-blue-500 stroke-white dark:stroke-gray-900 stroke-2 hover:r-3.5 transition-all duration-150"
               />
               <title>
                 {`${p.date}: ₹${p.equity.toLocaleString("en-IN")} (${p.pnl >= 0 ? "+" : ""}₹${p.pnl.toLocaleString("en-IN")})`}
@@ -396,21 +444,25 @@ const DashboardPage = () => {
           <div className="h-8 w-48 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
           <div className="h-6 w-24 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((n) => (
-            <Card key={n} className="animate-pulse">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <Card key={n} className="animate-pulse border dark:border-gray-800">
               <CardHeader className="pb-2">
-                <div className="h-4 w-24 bg-gray-200 dark:bg-gray-800 rounded mb-2" />
+                <div className="h-3 w-16 bg-gray-200 dark:bg-gray-800 rounded mb-1" />
+                <div className="h-4 w-28 bg-gray-200 dark:bg-gray-800 rounded" />
               </CardHeader>
-              <CardContent>
-                <div className="h-8 w-32 bg-gray-200 dark:bg-gray-800 rounded" />
-              </CardContent>
+              <CardContent className="h-8 bg-gray-50/50 dark:bg-gray-900/20" />
             </Card>
           ))}
         </div>
-        <Card className="animate-pulse">
-          <CardContent className="h-48 bg-gray-100 dark:bg-gray-800 rounded-lg" />
-        </Card>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Card className="lg:col-span-2 animate-pulse border dark:border-gray-800">
+            <CardContent className="h-64 bg-gray-100 dark:bg-gray-800 rounded-lg" />
+          </Card>
+          <Card className="animate-pulse border dark:border-gray-800">
+            <CardContent className="h-64 bg-gray-100 dark:bg-gray-800 rounded-lg" />
+          </Card>
+        </div>
       </div>
     );
   }
@@ -418,7 +470,7 @@ const DashboardPage = () => {
   if (hasError) {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-center text-red-600 dark:text-red-400">
-        <ShieldAlert className="h-12 w-12 mb-4" />
+        <ShieldAlert className="h-12 w-12 mb-4 animate-bounce" />
         <h3 className="text-xl font-bold mb-2">Error Loading Dashboard</h3>
         <p className="text-sm text-gray-500 max-w-sm mb-4">
           We encountered an issue fetching your Zerodha Kite portfolio or
@@ -434,6 +486,7 @@ const DashboardPage = () => {
 
   return (
     <div className="space-y-6">
+      {/* Header section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">
@@ -444,43 +497,51 @@ const DashboardPage = () => {
           </p>
         </div>
         <div className="flex space-x-2">
-          <Badge variant="success">Kite Connected</Badge>
-          <Badge variant="secondary">Paper Trading Off</Badge>
+          <Badge
+            variant="success"
+            className="font-semibold text-xs py-1 border dark:border-green-900"
+          >
+            Kite Connected
+          </Badge>
+          <Badge variant="secondary" className="font-semibold text-xs py-1">
+            Paper Trading Off
+          </Badge>
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Total Value
+      {/* KPI Cards Grid */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <Card className="hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 select-none">
+          <CardHeader className="pb-1 flex flex-row items-center justify-between">
+            <CardTitle className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+              Portfolio Value
             </CardTitle>
+            <CircleDollarSign className="h-4.5 w-4.5 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-xl font-extrabold tracking-tight">
               ₹
-              {totalHoldingsValue.toLocaleString("en-IN", {
+              {totalNetAssetValue.toLocaleString("en-IN", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
             </div>
-            <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium flex items-center">
-              <TrendingUp className="h-3 w-3 mr-1" />
-              Equities value
+            <p className="text-[10px] text-gray-500 mt-1 flex items-center font-medium">
+              Combined assets & liquid cash
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <Card className="hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 select-none">
+          <CardHeader className="pb-1 flex flex-row items-center justify-between">
+            <CardTitle className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
               {"Today's P&L"}
             </CardTitle>
+            <Activity className="h-4.5 w-4.5 text-gray-400" />
           </CardHeader>
           <CardContent>
             <div
-              className={`text-2xl font-bold ${totalPositionsPnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+              className={`text-xl font-extrabold tracking-tight flex items-center ${totalPositionsPnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
             >
               {totalPositionsPnl >= 0 ? "+" : ""}₹
               {totalPositionsPnl.toLocaleString("en-IN", {
@@ -488,129 +549,331 @@ const DashboardPage = () => {
                 maximumFractionDigits: 2,
               })}
             </div>
-            <p className="text-xs text-gray-400 mt-1">
-              From active intraday & swing positions
+            <p
+              className={`text-[10px] mt-1 font-semibold flex items-center ${totalPositionsPnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+            >
+              {totalPositionsPnl >= 0 ? (
+                <TrendingUp className="h-3 w-3 mr-1" />
+              ) : (
+                <TrendingDown className="h-3 w-3 mr-1" />
+              )}
+              {todayChangePercent >= 0 ? "+" : ""}
+              {todayChangePercent.toFixed(2)}% change today
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Active Positions
+        <Card className="hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 select-none">
+          <CardHeader className="pb-1 flex flex-row items-center justify-between">
+            <CardTitle className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+              Equities holdings
             </CardTitle>
+            <TrendingUp className="h-4.5 w-4.5 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activePositionsCount}</div>
-            <p className="text-xs text-gray-400 mt-1">
-              Open holdings with active quantities
+            <div className="text-xl font-extrabold tracking-tight">
+              ₹
+              {totalHoldingsValue.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+            <p
+              className={`text-[10px] mt-1 font-semibold flex items-center ${totalHoldingsPnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+            >
+              {overallHoldingsReturnPercent >= 0 ? "+" : ""}
+              {overallHoldingsReturnPercent.toFixed(1)}% total returns
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <Card className="hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 select-none">
+          <CardHeader className="pb-1 flex flex-row items-center justify-between">
+            <CardTitle className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
               Available Margin
             </CardTitle>
+            <Percent className="h-4.5 w-4.5 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-xl font-extrabold tracking-tight">
               ₹
               {availableMargin.toLocaleString("en-IN", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
             </div>
-            <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium flex items-center">
-              <TrendingDown className="h-3 w-3 mr-1" />₹
-              {(margins?.utilized || 0).toLocaleString("en-IN")} utilized
+            <p className="text-[10px] text-gray-500 mt-1 font-medium flex items-center">
+              Utilized: ₹{(margins?.utilized || 0).toLocaleString("en-IN")}
             </p>
           </CardContent>
         </Card>
 
-        <Card className="flex items-center justify-between p-4 pb-2">
+        <Card className="hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 flex items-center justify-between p-4 py-3 select-none">
           <div>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
               Win Rate
             </span>
-            <p className="text-xs text-gray-400 mt-1">Closed journal trades</p>
+            <div className="text-lg font-extrabold text-gray-800 dark:text-gray-100 mt-0.5">
+              {analytics?.winRate.toFixed(1)}%
+            </div>
+            <p className="text-[9px] text-gray-500 mt-0.5 font-medium leading-none">
+              {analytics?.totalTrades || 0} setups logged
+            </p>
           </div>
           {analytics && renderWinRateGauge(analytics.winRate)}
         </Card>
       </div>
 
+      {/* Portfolio Insights Panel */}
+      {holdings && holdings.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="p-3 hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 select-none">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                  Largest Allocation
+                </span>
+                {largestHolding ? (
+                  <>
+                    <span className="text-sm font-extrabold text-gray-800 dark:text-gray-200">
+                      {largestHolding.tradingsymbol}
+                    </span>
+                    <span className="text-[9px] text-gray-500 block leading-tight mt-0.5">
+                      Weight:{" "}
+                      {(
+                        ((largestHolding.quantity * largestHolding.lastPrice) /
+                          totalHoldingsValue) *
+                        100
+                      ).toFixed(1)}
+                      % (₹
+                      {(
+                        largestHolding.quantity * largestHolding.lastPrice
+                      ).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                      )
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-xs text-gray-500">
+                    No holdings found
+                  </span>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-3 hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 select-none">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                  Top Performer
+                </span>
+                {bestPerformer ? (
+                  <>
+                    <span className="text-sm font-extrabold text-green-600 dark:text-green-400">
+                      {bestPerformer.tradingsymbol}
+                    </span>
+                    <span className="text-[9px] text-gray-500 block leading-tight mt-0.5">
+                      Return: +₹
+                      {bestPerformer.pnl.toLocaleString("en-IN", {
+                        maximumFractionDigits: 0,
+                      })}{" "}
+                      (
+                      {(
+                        (bestPerformer.pnl /
+                          (bestPerformer.quantity *
+                            bestPerformer.averagePrice)) *
+                        100
+                      ).toFixed(1)}
+                      %)
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-xs text-gray-500">
+                    No holdings found
+                  </span>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-3 hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 select-none">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                  Worst Performer
+                </span>
+                {worstPerformer ? (
+                  <>
+                    <span
+                      className={`text-sm font-extrabold ${worstPerformer.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+                    >
+                      {worstPerformer.tradingsymbol}
+                    </span>
+                    <span className="text-[9px] text-gray-500 block leading-tight mt-0.5">
+                      Return: {worstPerformer.pnl >= 0 ? "+" : ""}₹
+                      {worstPerformer.pnl.toLocaleString("en-IN", {
+                        maximumFractionDigits: 0,
+                      })}{" "}
+                      (
+                      {(
+                        (worstPerformer.pnl /
+                          (worstPerformer.quantity *
+                            worstPerformer.averagePrice)) *
+                        100
+                      ).toFixed(1)}
+                      %)
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-xs text-gray-500">
+                    No holdings found
+                  </span>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-3 hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 select-none">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                  Asset Allocation
+                </span>
+                <span className="text-sm font-extrabold text-gray-800 dark:text-gray-200">
+                  {cashAllocationPercent.toFixed(1)}% Liquid Cash
+                </span>
+                <span className="text-[9px] text-gray-500 block leading-tight mt-0.5">
+                  Equities: {(100 - cashAllocationPercent).toFixed(1)}% of total
+                  net assets
+                </span>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Analytics Curve Section */}
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Equity Growth Curve</CardTitle>
+        <Card className="lg:col-span-2 hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-bold tracking-tight">
+              Equity Growth Curve
+            </CardTitle>
           </CardHeader>
           <CardContent>{renderEquityCurve()}</CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Performance Audit</CardTitle>
+        <Card className="hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-bold tracking-tight">
+              Performance Audit
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center py-2 border-b dark:border-gray-800">
-              <span className="text-xs text-gray-400 font-semibold uppercase">
-                Profit Factor
-              </span>
-              <span
-                className={`text-sm font-bold ${analytics && analytics.profitFactor >= 1.5 ? "text-green-600" : "text-gray-500"}`}
-              >
-                {analytics?.profitFactor.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between items-center py-2 border-b dark:border-gray-800">
-              <span className="text-xs text-gray-400 font-semibold uppercase">
-                Sharpe Ratio
-              </span>
-              <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                {analytics?.sharpeRatio.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between items-center py-2 border-b dark:border-gray-800">
-              <span className="text-xs text-gray-400 font-semibold uppercase">
-                Max Drawdown
-              </span>
-              <span
-                className={`text-sm font-bold ${analytics && analytics.maxDrawdown > 10 ? "text-red-500" : "text-green-600"}`}
-              >
-                {analytics?.maxDrawdown.toFixed(1)}%
-              </span>
-            </div>
-            <div className="flex justify-between items-center py-2 border-b dark:border-gray-800">
-              <span className="text-xs text-gray-400 font-semibold uppercase">
-                Avg Gain
-              </span>
-              <span className="text-sm font-bold text-green-600">
-                +₹
-                {analytics?.avgGain.toLocaleString("en-IN", {
-                  maximumFractionDigits: 0,
-                })}
-              </span>
-            </div>
-            <div className="flex justify-between items-center py-2 border-b dark:border-gray-800">
-              <span className="text-xs text-gray-400 font-semibold uppercase">
-                Avg Loss
-              </span>
-              <span className="text-sm font-bold text-red-500">
-                -₹
-                {analytics?.avgLoss.toLocaleString("en-IN", {
-                  maximumFractionDigits: 0,
-                })}
-              </span>
-            </div>
-            <div className="flex justify-between items-center py-2">
-              <span className="text-xs text-gray-400 font-semibold uppercase">
-                Total Trades
-              </span>
-              <span className="text-sm font-bold">
-                {analytics?.totalTrades}
-              </span>
+          <CardContent className="pb-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 border dark:border-gray-800 rounded bg-gray-50/30 dark:bg-gray-900/10">
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1 flex items-center justify-between">
+                  Sharpe Ratio
+                  <Info className="h-3 w-3 text-gray-400 cursor-help">
+                    <title>
+                      Excess return per unit of portfolio volatility. Standard
+                      &gt; 1.5, Premium &gt; 2.0.
+                    </title>
+                  </Info>
+                </span>
+                <span
+                  className={`text-lg font-bold block ${analytics && analytics.sharpeRatio >= 2 ? "text-green-600 dark:text-green-400" : analytics && analytics.sharpeRatio >= 1 ? "text-yellow-600 dark:text-yellow-400" : "text-gray-700 dark:text-gray-300"}`}
+                >
+                  {analytics?.sharpeRatio.toFixed(2) || "0.00"}
+                </span>
+                <span className="text-[9px] text-gray-500 block leading-tight mt-1">
+                  Risk-adjusted return rating
+                </span>
+              </div>
+
+              <div className="p-3 border dark:border-gray-800 rounded bg-gray-50/30 dark:bg-gray-900/10">
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1 flex items-center justify-between">
+                  Profit Factor
+                  <Info className="h-3 w-3 text-gray-400 cursor-help">
+                    <title>
+                      Gross profits divided by gross losses. Value &gt; 1.5
+                      shows strong edge.
+                    </title>
+                  </Info>
+                </span>
+                <span
+                  className={`text-lg font-bold block ${analytics && analytics.profitFactor >= 1.5 ? "text-green-600 dark:text-green-400" : "text-gray-700 dark:text-gray-300"}`}
+                >
+                  {analytics?.profitFactor.toFixed(2) || "0.00"}
+                </span>
+                <span className="text-[9px] text-gray-500 block leading-tight mt-1">
+                  Gains relative to loss trades
+                </span>
+              </div>
+
+              <div className="p-3 border dark:border-gray-800 rounded bg-gray-50/30 dark:bg-gray-900/10">
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1 flex items-center justify-between">
+                  Max Drawdown
+                  <Info className="h-3 w-3 text-gray-400 cursor-help">
+                    <title>Maximum balance decline from historical peak.</title>
+                  </Info>
+                </span>
+                <span
+                  className={`text-lg font-bold block ${analytics && analytics.maxDrawdown > 10 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}
+                >
+                  {analytics?.maxDrawdown.toFixed(1) || "0.0"}%
+                </span>
+                <span className="text-[9px] text-gray-500 block leading-tight mt-1">
+                  Maximum peak-to-trough drop
+                </span>
+              </div>
+
+              <div className="p-3 border dark:border-gray-800 rounded bg-gray-50/30 dark:bg-gray-900/10">
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1 flex items-center justify-between">
+                  Accuracy
+                  <Info className="h-3 w-3 text-gray-400 cursor-help">
+                    <title>
+                      Percentage of closed trades that were profitable.
+                    </title>
+                  </Info>
+                </span>
+                <span className="text-lg font-bold block text-blue-600 dark:text-blue-400">
+                  {analytics?.winRate.toFixed(1) || "0.0"}%
+                </span>
+                <span className="text-[9px] text-gray-500 block leading-tight mt-1">
+                  Win rate of closed systems
+                </span>
+              </div>
+
+              <div className="p-3 border dark:border-gray-800 rounded bg-gray-50/30 dark:bg-gray-900/10">
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                  Avg Win Size
+                </span>
+                <span className="text-lg font-bold block text-green-600 dark:text-green-400">
+                  +₹
+                  {analytics?.avgGain.toLocaleString("en-IN", {
+                    maximumFractionDigits: 0,
+                  }) || "0"}
+                </span>
+                <span className="text-[9px] text-gray-500 block leading-tight mt-1">
+                  Mean winning trade payout
+                </span>
+              </div>
+
+              <div className="p-3 border dark:border-gray-800 rounded bg-gray-50/30 dark:bg-gray-900/10">
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                  Avg Loss Size
+                </span>
+                <span className="text-lg font-bold block text-red-600 dark:text-red-400">
+                  -₹
+                  {analytics?.avgLoss.toLocaleString("en-IN", {
+                    maximumFractionDigits: 0,
+                  }) || "0"}
+                </span>
+                <span className="text-[9px] text-gray-500 block leading-tight mt-1">
+                  Mean losing trade capital hit
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -619,56 +882,88 @@ const DashboardPage = () => {
       {/* Holdings & Positions Tables */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Positions Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Active Positions</CardTitle>
-            <Badge variant="secondary">{positions?.length || 0} Total</Badge>
+        <Card className="hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-sm font-bold tracking-tight">
+              Active Positions
+            </CardTitle>
+            <Badge variant="secondary" className="font-semibold text-xs py-0.5">
+              {activePositionsCount} Active
+            </Badge>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
+              <table className="w-full text-xs text-left select-none">
                 <thead>
-                  <tr className="border-b dark:border-gray-800 text-gray-500 font-medium">
+                  <tr className="border-b dark:border-gray-800 text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">
                     <th className="pb-2">Symbol</th>
-                    <th className="pb-2 text-right">Qty</th>
+                    <th className="pb-2 text-right">Quantity</th>
                     <th className="pb-2 text-right">Avg Price</th>
                     <th className="pb-2 text-right">LTP</th>
-                    <th className="pb-2 text-right">P&L</th>
+                    <th className="pb-2 text-right">Current Value</th>
+                    <th className="pb-2 text-right">PnL (%)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-medium">
                   {positions?.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className="py-4 text-center text-gray-400"
-                      >
-                        No active positions today.
+                      <td colSpan={6} className="py-4">
+                        <div className="flex flex-col items-center justify-center py-6 px-4 text-center border border-dashed dark:border-gray-800 rounded bg-gray-50/10 dark:bg-gray-900/5 select-none">
+                          <AlertCircle className="h-6 w-6 text-gray-400 dark:text-gray-600 mb-1" />
+                          <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                            No Active Intraday Positions
+                          </span>
+                          <p className="text-[10px] text-gray-500 max-w-xs mt-1">
+                            No open intraday or swing trading positions loaded
+                            for today.
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   ) : (
-                    positions?.map((pos) => (
-                      <tr key={pos.tradingsymbol}>
-                        <td className="py-3 font-semibold">
-                          {pos.tradingsymbol}{" "}
-                          <span className="text-xs text-gray-400 font-normal">
-                            {pos.exchange}
-                          </span>
-                        </td>
-                        <td className="py-3 text-right">{pos.quantity}</td>
-                        <td className="py-3 text-right">
-                          ₹{pos.averagePrice.toFixed(2)}
-                        </td>
-                        <td className="py-3 text-right">
-                          ₹{pos.lastPrice.toFixed(2)}
-                        </td>
-                        <td
-                          className={`py-3 text-right font-medium ${pos.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+                    positions?.map((pos) => {
+                      const posValue = pos.quantity * pos.lastPrice;
+                      const returnPct =
+                        pos.averagePrice > 0
+                          ? (pos.pnl / (pos.quantity * pos.averagePrice)) * 100
+                          : 0;
+                      return (
+                        <tr
+                          key={pos.tradingsymbol}
+                          className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors"
                         >
-                          ₹{pos.pnl.toFixed(2)}
-                        </td>
-                      </tr>
-                    ))
+                          <td className="py-2.5 font-bold text-gray-800 dark:text-gray-200">
+                            {pos.tradingsymbol}{" "}
+                            <span className="text-[9px] text-gray-400 dark:text-gray-500 font-normal ml-0.5">
+                              {pos.exchange}
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-right font-semibold text-gray-700 dark:text-gray-300">
+                            {pos.quantity}
+                          </td>
+                          <td className="py-2.5 text-right text-gray-500">
+                            ₹{pos.averagePrice.toFixed(2)}
+                          </td>
+                          <td className="py-2.5 text-right font-semibold text-gray-800 dark:text-gray-200">
+                            ₹{pos.lastPrice.toFixed(2)}
+                          </td>
+                          <td className="py-2.5 text-right font-semibold text-gray-800 dark:text-gray-200">
+                            ₹
+                            {posValue.toLocaleString("en-IN", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
+                          <td
+                            className={`py-2.5 text-right font-bold ${pos.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+                          >
+                            {pos.pnl >= 0 ? "+" : ""}₹{pos.pnl.toFixed(2)} (
+                            {returnPct >= 0 ? "+" : ""}
+                            {returnPct.toFixed(1)}%)
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -677,56 +972,96 @@ const DashboardPage = () => {
         </Card>
 
         {/* Holdings Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Equities Holdings</CardTitle>
-            <Badge variant="secondary">{holdings?.length || 0} Assets</Badge>
+        <Card className="hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-sm font-bold tracking-tight">
+              Equities Holdings
+            </CardTitle>
+            <Badge variant="secondary" className="font-semibold text-xs py-0.5">
+              {holdings?.length || 0} Assets
+            </Badge>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
+              <table className="w-full text-xs text-left select-none">
                 <thead>
-                  <tr className="border-b dark:border-gray-800 text-gray-500 font-medium">
+                  <tr className="border-b dark:border-gray-800 text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">
                     <th className="pb-2">Symbol</th>
-                    <th className="pb-2 text-right">Qty</th>
+                    <th className="pb-2 text-right">Quantity</th>
                     <th className="pb-2 text-right">Avg Price</th>
                     <th className="pb-2 text-right">LTP</th>
-                    <th className="pb-2 text-right">P&L</th>
+                    <th className="pb-2 text-right">Current Value</th>
+                    <th className="pb-2 text-right">Weight</th>
+                    <th className="pb-2 text-right">PnL (%)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-medium">
                   {holdings?.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className="py-4 text-center text-gray-400"
-                      >
-                        No stock holdings in portfolio.
+                      <td colSpan={7} className="py-4">
+                        <div className="flex flex-col items-center justify-center py-6 px-4 text-center border border-dashed dark:border-gray-800 rounded bg-gray-50/10 dark:bg-gray-900/5 select-none">
+                          <Briefcase className="h-6 w-6 text-gray-400 dark:text-gray-600 mb-1" />
+                          <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                            Empty Equities Basket
+                          </span>
+                          <p className="text-[10px] text-gray-500 max-w-xs mt-1">
+                            No long-term equity stocks found loaded from your
+                            Kite Connect account.
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   ) : (
-                    holdings?.map((h) => (
-                      <tr key={h.tradingsymbol}>
-                        <td className="py-3 font-semibold">
-                          {h.tradingsymbol}{" "}
-                          <span className="text-xs text-gray-400 font-normal">
-                            {h.exchange}
-                          </span>
-                        </td>
-                        <td className="py-3 text-right">{h.quantity}</td>
-                        <td className="py-3 text-right">
-                          ₹{h.averagePrice.toFixed(2)}
-                        </td>
-                        <td className="py-3 text-right">
-                          ₹{h.lastPrice.toFixed(2)}
-                        </td>
-                        <td
-                          className={`py-3 text-right font-medium ${h.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+                    holdings?.map((h) => {
+                      const value = h.quantity * h.lastPrice;
+                      const weight =
+                        totalHoldingsValue > 0
+                          ? (value / totalHoldingsValue) * 100
+                          : 0;
+                      const returnPct =
+                        h.averagePrice > 0
+                          ? (h.pnl / (h.quantity * h.averagePrice)) * 100
+                          : 0;
+                      return (
+                        <tr
+                          key={h.tradingsymbol}
+                          className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors"
                         >
-                          ₹{h.pnl.toFixed(2)}
-                        </td>
-                      </tr>
-                    ))
+                          <td className="py-2.5 font-bold text-gray-800 dark:text-gray-200">
+                            {h.tradingsymbol}{" "}
+                            <span className="text-[9px] text-gray-400 dark:text-gray-500 font-normal ml-0.5">
+                              {h.exchange}
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-right font-semibold text-gray-700 dark:text-gray-300">
+                            {h.quantity}
+                          </td>
+                          <td className="py-2.5 text-right text-gray-500">
+                            ₹{h.averagePrice.toFixed(2)}
+                          </td>
+                          <td className="py-2.5 text-right font-semibold text-gray-800 dark:text-gray-200">
+                            ₹{h.lastPrice.toFixed(2)}
+                          </td>
+                          <td className="py-2.5 text-right font-semibold text-gray-800 dark:text-gray-200">
+                            ₹
+                            {value.toLocaleString("en-IN", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
+                          <td className="py-2.5 text-right text-gray-500 font-semibold">
+                            {weight.toFixed(1)}%
+                          </td>
+                          <td
+                            className={`py-2.5 text-right font-bold ${h.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+                          >
+                            {h.pnl >= 0 ? "+" : ""}₹{h.pnl.toFixed(2)} (
+                            {returnPct >= 0 ? "+" : ""}
+                            {returnPct.toFixed(1)}%)
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -736,63 +1071,83 @@ const DashboardPage = () => {
       </div>
 
       {/* Orders List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Orders</CardTitle>
+      <Card className="hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-sm font-bold tracking-tight">
+            Recent Orders
+          </CardTitle>
+          <Badge variant="secondary" className="font-semibold text-xs py-0.5">
+            {orders?.length || 0} Total
+          </Badge>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
+            <table className="w-full text-xs text-left select-none">
               <thead>
-                <tr className="border-b dark:border-gray-800 text-gray-500 font-medium">
+                <tr className="border-b dark:border-gray-800 text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">
                   <th className="pb-2">Order ID</th>
                   <th className="pb-2">Symbol</th>
                   <th className="pb-2">Type</th>
                   <th className="pb-2 text-right">Qty</th>
                   <th className="pb-2 text-right">Price</th>
-                  <th className="pb-2">Status</th>
-                  <th className="pb-2">Time</th>
+                  <th className="pb-2 text-center">Status</th>
+                  <th className="pb-2 text-right">Time</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-medium">
                 {orders?.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-4 text-center text-gray-400">
-                      No orders placed today.
+                    <td colSpan={7} className="py-4">
+                      <div className="flex flex-col items-center justify-center py-6 px-4 text-center border border-dashed dark:border-gray-800 rounded bg-gray-50/10 dark:bg-gray-900/5 select-none">
+                        <ListTodo className="h-6 w-6 text-gray-400 dark:text-gray-600 mb-1" />
+                        <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                          No Orders Logged Today
+                        </span>
+                        <p className="text-[10px] text-gray-500 max-w-xs mt-1">
+                          Verify order states or place new transactions on your
+                          broker console.
+                        </p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
                   orders?.map((order) => (
-                    <tr key={order.orderId}>
-                      <td className="py-3 text-gray-500 text-xs">
+                    <tr
+                      key={order.orderId}
+                      className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors"
+                    >
+                      <td className="py-2.5 text-gray-400 text-[10px] font-mono">
                         {order.orderId}
                       </td>
-                      <td className="py-3 font-semibold">
+                      <td className="py-2.5 font-bold text-gray-800 dark:text-gray-200">
                         {order.tradingsymbol}
                       </td>
-                      <td className="py-3">
+                      <td className="py-2.5">
                         <span
-                          className={`px-2 py-0.5 rounded text-xs font-semibold ${order.transactionType === "BUY" ? "bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-400" : "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-400"}`}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${order.transactionType === "BUY" ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border dark:border-blue-900" : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border dark:border-red-900"}`}
                         >
                           {order.transactionType}
                         </span>
                       </td>
-                      <td className="py-3 text-right">{order.quantity}</td>
-                      <td className="py-3 text-right">
+                      <td className="py-2.5 text-right font-semibold text-gray-700 dark:text-gray-300">
+                        {order.quantity}
+                      </td>
+                      <td className="py-2.5 text-right font-semibold text-gray-800 dark:text-gray-200">
                         ₹{order.price.toFixed(2)}
                       </td>
-                      <td className="py-3">
+                      <td className="py-2.5 text-center">
                         <Badge
                           variant={
                             order.status === "COMPLETE"
                               ? "success"
                               : "secondary"
                           }
+                          className="text-[9px] py-0.5 font-semibold"
                         >
                           {order.status}
                         </Badge>
                       </td>
-                      <td className="py-3 text-gray-400 text-xs">
+                      <td className="py-2.5 text-right text-gray-400 text-[10px]">
                         {new Date(order.timestamp).toLocaleTimeString()}
                       </td>
                     </tr>
