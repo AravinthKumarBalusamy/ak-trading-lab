@@ -31,13 +31,15 @@ import {
   LogIn,
   HelpCircle,
   ListTodo,
-  BookOpen,
   TrendingUp,
   TrendingDown,
   ShieldAlert,
   Plus,
   Trash2,
   Search,
+  Calendar,
+  MessageSquare,
+  Filter,
 } from "lucide-react";
 
 // 1. Root Route
@@ -923,35 +925,793 @@ const watchlistRoute = createRoute({
   component: WatchlistPage,
 });
 
+interface TradeNoteData {
+  id: string;
+  content: string;
+  createdAt: string;
+}
+
+interface TradeJournalData {
+  id: string;
+  symbol: string;
+  direction: "BUY" | "SELL";
+  entryPrice: number;
+  exitPrice: number | null;
+  quantity: number;
+  pnl: number | null;
+  status: "OPEN" | "CLOSED";
+  entryTime: string;
+  exitTime: string | null;
+  emotion: string | null;
+  mistake: string | null;
+  lesson: string | null;
+  reason: string | null;
+  tags: string[];
+  notes: TradeNoteData[];
+}
+
+const JournalPage = () => {
+  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "OPEN" | "CLOSED">(
+    "ALL",
+  );
+  const [tagFilter, setTagFilter] = useState("");
+  const [sortBy, setSortBy] = useState<
+    "date_desc" | "date_asc" | "pnl_desc" | "pnl_asc"
+  >("date_desc");
+
+  const [newNoteContent, setNewNoteContent] = useState("");
+
+  const [symbol, setSymbol] = useState("");
+  const [direction, setDirection] = useState<"BUY" | "SELL">("BUY");
+  const [entryPrice, setEntryPrice] = useState("");
+  const [exitPrice, setExitPrice] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [status, setStatus] = useState<"OPEN" | "CLOSED">("CLOSED");
+  const [entryTime, setEntryTime] = useState(
+    new Date().toISOString().substring(0, 16),
+  );
+  const [exitTime, setExitTime] = useState("");
+  const [emotion, setEmotion] = useState("CONFIDENT");
+  const [reason, setReason] = useState("");
+  const [mistake, setMistake] = useState("NONE");
+  const [lesson, setLesson] = useState("");
+  const [tagsInput, setTagsInput] = useState("");
+  const [initialNote, setInitialNote] = useState("");
+
+  const {
+    data: trades,
+    isLoading,
+    refetch,
+  } = useQuery<TradeJournalData[]>({
+    queryKey: ["trades"],
+    queryFn: () => fetchWithAuth<TradeJournalData[]>("/api/trades"),
+  });
+
+  const allTags = Array.from(new Set(trades?.flatMap((t) => t.tags) || []));
+
+  let filtered = trades || [];
+  if (statusFilter !== "ALL") {
+    filtered = filtered.filter((t) => t.status === statusFilter);
+  }
+  if (searchQuery.trim()) {
+    const q = searchQuery.toUpperCase();
+    filtered = filtered.filter((t) => t.symbol.includes(q));
+  }
+  if (tagFilter) {
+    filtered = filtered.filter((t) => t.tags.includes(tagFilter));
+  }
+
+  filtered = [...filtered].sort((a, b) => {
+    if (sortBy === "date_desc")
+      return new Date(b.entryTime).getTime() - new Date(a.entryTime).getTime();
+    if (sortBy === "date_asc")
+      return new Date(a.entryTime).getTime() - new Date(b.entryTime).getTime();
+    if (sortBy === "pnl_desc") return (b.pnl || 0) - (a.pnl || 0);
+    if (sortBy === "pnl_asc") return (a.pnl || 0) - (b.pnl || 0);
+    return 0;
+  });
+
+  const selectedTrade = trades?.find((t) => t.id === selectedTradeId);
+
+  const handleCreateTrade = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!symbol.trim() || !entryPrice || !quantity) return;
+
+    let calculatedPnl: number | null = null;
+    if (status === "CLOSED" && exitPrice) {
+      const entry = Number(entryPrice);
+      const exit = Number(exitPrice);
+      const qty = Number(quantity);
+      calculatedPnl =
+        direction === "BUY" ? (exit - entry) * qty : (entry - exit) * qty;
+    }
+
+    const payload = {
+      symbol: symbol.toUpperCase().trim(),
+      direction,
+      entryPrice: Number(entryPrice),
+      exitPrice: status === "CLOSED" && exitPrice ? Number(exitPrice) : null,
+      quantity: Number(quantity),
+      status,
+      entryTime: new Date(entryTime).toISOString(),
+      exitTime:
+        status === "CLOSED" && exitTime
+          ? new Date(exitTime).toISOString()
+          : null,
+      pnl: calculatedPnl,
+      emotion,
+      reason: reason || null,
+      mistake: mistake || null,
+      lesson: lesson || null,
+      tags: tagsInput
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0),
+      initialNote: initialNote.trim() || undefined,
+    };
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/trades", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setSymbol("");
+        setEntryPrice("");
+        setExitPrice("");
+        setQuantity("");
+        setStatus("CLOSED");
+        setEntryTime(new Date().toISOString().substring(0, 16));
+        setExitTime("");
+        setEmotion("CONFIDENT");
+        setReason("");
+        setMistake("NONE");
+        setLesson("");
+        setTagsInput("");
+        setInitialNote("");
+        setIsCreating(false);
+        await refetch();
+      }
+    } catch (err) {
+      console.error("Failed to log trade:", err);
+    }
+  };
+
+  const handleDeleteTrade = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this journal entry?")) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/trades/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        if (selectedTradeId === id) setSelectedTradeId(null);
+        await refetch();
+      }
+    } catch (err) {
+      console.error("Failed to delete trade:", err);
+    }
+  };
+
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTradeId || !newNoteContent.trim()) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/trades/${selectedTradeId}/notes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: newNoteContent }),
+      });
+      if (res.ok) {
+        setNewNoteContent("");
+        await refetch();
+      }
+    } catch (err) {
+      console.error("Failed to add note:", err);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!selectedTradeId) return;
+    if (!confirm("Delete this note?")) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `/api/trades/${selectedTradeId}/notes/${noteId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      if (res.ok) {
+        await refetch();
+      }
+    } catch (err) {
+      console.error("Failed to delete note:", err);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 w-48 bg-gray-200 dark:bg-gray-800 rounded" />
+        <div className="h-12 w-full bg-gray-200 dark:bg-gray-800 rounded" />
+        <div className="h-48 w-full bg-gray-200 dark:bg-gray-800 rounded" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Trading Journal</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
+            Log, track, and audit setups, triggers, and cognitive emotions.
+          </p>
+        </div>
+        <Button variant="primary" onClick={() => setIsCreating(true)}>
+          <Plus className="h-4 w-4 mr-1" />
+          Log Trade
+        </Button>
+      </div>
+
+      {isCreating && (
+        <Card className="p-6 border border-blue-200 dark:border-blue-900 bg-blue-50/20 dark:bg-blue-950/10">
+          <form onSubmit={handleCreateTrade} className="space-y-6">
+            <h3 className="text-lg font-bold">New Trade Log</h3>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Symbol
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. SBIN"
+                  value={symbol}
+                  onChange={(e) => setSymbol(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded focus:ring-1 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Direction
+                </label>
+                <select
+                  value={direction}
+                  onChange={(e) =>
+                    setDirection(e.target.value as "BUY" | "SELL")
+                  }
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                >
+                  <option value="BUY">BUY (Long)</option>
+                  <option value="SELL">SELL (Short)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Status
+                </label>
+                <select
+                  value={status}
+                  onChange={(e) =>
+                    setStatus(e.target.value as "OPEN" | "CLOSED")
+                  }
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                >
+                  <option value="CLOSED">CLOSED (Completed Trade)</option>
+                  <option value="OPEN">OPEN (Active Position)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Quantity
+                </label>
+                <input
+                  type="number"
+                  placeholder="e.g. 100"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Entry Price
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="e.g. 650.50"
+                  value={entryPrice}
+                  onChange={(e) => setEntryPrice(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                  required
+                />
+              </div>
+
+              {status === "CLOSED" && (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                    Exit Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 660.00"
+                    value={exitPrice}
+                    onChange={(e) => setExitPrice(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                    required
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Entry Time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={entryTime}
+                  onChange={(e) => setEntryTime(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                  required
+                />
+              </div>
+
+              {status === "CLOSED" && (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                    Exit Time
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={exitTime}
+                    onChange={(e) => setExitTime(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                    required
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Emotion State
+                </label>
+                <select
+                  value={emotion}
+                  onChange={(e) => setEmotion(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                >
+                  <option value="CONFIDENT">Confident</option>
+                  <option value="DISCIPLINED">Disciplined</option>
+                  <option value="FEAR">Fear</option>
+                  <option value="GREED">Greed</option>
+                  <option value="ANXIOUS">Anxious</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Mistake Log
+                </label>
+                <select
+                  value={mistake}
+                  onChange={(e) => setMistake(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                >
+                  <option value="NONE">None</option>
+                  <option value="FOMO">FOMO (Fear of missing out)</option>
+                  <option value="OVERTRADING">Overtrading</option>
+                  <option value="CHASING">Chasing Price</option>
+                  <option value="STOP_LOST_MOVED">Stop Loss Moved</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Tags (Comma-separated)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. swing, breakout, support"
+                  value={tagsInput}
+                  onChange={(e) => setTagsInput(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Setup / Reason
+                </label>
+                <textarea
+                  placeholder="Describe your entry setup pattern..."
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Lesson learned
+                </label>
+                <textarea
+                  placeholder="What did this trade teach you?"
+                  value={lesson}
+                  onChange={(e) => setLesson(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                Initial Journal Note (Markdown allowed)
+              </label>
+              <textarea
+                placeholder="# Setup analysis..."
+                value={initialNote}
+                onChange={(e) => setInitialNote(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-1.5 text-sm bg-white dark:bg-gray-900 border dark:border-gray-800 rounded font-mono"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="primary" type="submit">
+                Save Log
+              </Button>
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setIsCreating(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <Card className="p-4">
+        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            <div className="flex border dark:border-gray-800 rounded overflow-hidden">
+              {(["ALL", "OPEN", "CLOSED"] as const).map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-3 py-1 text-xs font-semibold border-r dark:border-gray-800 last:border-0 transition-colors ${
+                    statusFilter === st
+                      ? "bg-blue-500 text-white"
+                      : "bg-white dark:bg-gray-900 text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search symbol..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-7 pr-3 py-1 text-xs border dark:border-gray-800 rounded bg-white dark:bg-gray-900 focus:outline-none w-32 focus:w-48 transition-all"
+              />
+              <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2 top-1.5" />
+            </div>
+
+            <select
+              value={tagFilter}
+              onChange={(e) => setTagFilter(e.target.value)}
+              className="px-2 py-1 text-xs border dark:border-gray-800 rounded bg-white dark:bg-gray-900 text-gray-500"
+            >
+              <option value="">All Tags</option>
+              {allTags.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center space-x-2 w-full md:w-auto justify-end">
+            <span className="text-xs text-gray-400 flex items-center">
+              <Filter className="h-3 w-3 mr-1" /> Sort
+            </span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="px-2 py-1 text-xs border dark:border-gray-800 rounded bg-white dark:bg-gray-900 text-gray-500"
+            >
+              <option value="date_desc">Newest Entry</option>
+              <option value="date_asc">Oldest Entry</option>
+              <option value="pnl_desc">PnL: High to Low</option>
+              <option value="pnl_asc">PnL: Low to High</option>
+            </select>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2 overflow-hidden">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead>
+                  <tr className="border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 text-gray-500 font-semibold">
+                    <th className="p-4">Symbol</th>
+                    <th className="p-4 text-right">Qty</th>
+                    <th className="p-4 text-right">Entry</th>
+                    <th className="p-4 text-right">Exit</th>
+                    <th className="p-4 text-right">P&L</th>
+                    <th className="p-4">Emotion</th>
+                    <th className="p-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-gray-400">
+                        No journal logs match this filter setup.
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((trade) => {
+                      const isPositive = (trade.pnl || 0) >= 0;
+                      return (
+                        <tr
+                          key={trade.id}
+                          onClick={() => setSelectedTradeId(trade.id)}
+                          className={`hover:bg-gray-50 dark:hover:bg-gray-850 cursor-pointer transition-colors ${
+                            selectedTradeId === trade.id
+                              ? "bg-blue-50/30 dark:bg-blue-950/20"
+                              : ""
+                          }`}
+                        >
+                          <td className="p-4">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-base">
+                                {trade.symbol}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${trade.direction === "BUY" ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-400" : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-400"}`}
+                              >
+                                {trade.direction}
+                              </span>
+                              <Badge
+                                variant={
+                                  trade.status === "CLOSED"
+                                    ? "success"
+                                    : "secondary"
+                                }
+                              >
+                                {trade.status}
+                              </Badge>
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1 flex items-center">
+                              <Calendar className="h-3 w-3 mr-1" />
+                              {new Date(trade.entryTime).toLocaleDateString()}
+                            </div>
+                          </td>
+                          <td className="p-4 text-right">{trade.quantity}</td>
+                          <td className="p-4 text-right">
+                            ₹{trade.entryPrice.toFixed(2)}
+                          </td>
+                          <td className="p-4 text-right">
+                            {trade.exitPrice
+                              ? `₹${trade.exitPrice.toFixed(2)}`
+                              : "-"}
+                          </td>
+                          <td
+                            className={`p-4 text-right font-semibold ${trade.status === "OPEN" ? "text-gray-400" : isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+                          >
+                            {trade.status === "OPEN"
+                              ? "Open"
+                              : `${isPositive ? "+" : ""}₹${(trade.pnl || 0).toLocaleString("en-IN")}`}
+                          </td>
+                          <td className="p-4">
+                            <span className="text-xs uppercase font-medium tracking-wider bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-gray-500">
+                              {trade.emotion}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteTrade(trade.id);
+                              }}
+                              className="p-1 rounded text-gray-400 hover:text-red-500 transition-colors"
+                              title="Delete log"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle>Trade Details & Log Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {selectedTrade ? (
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-lg font-bold flex items-center">
+                    {selectedTrade.symbol} Notes
+                  </h4>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {selectedTrade.tags.map((t) => (
+                      <span
+                        key={t}
+                        className="text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded"
+                      >
+                        #{t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {selectedTrade.reason && (
+                    <div className="text-xs space-y-1">
+                      <span className="font-semibold text-gray-400 uppercase tracking-wide">
+                        Setup Reason
+                      </span>
+                      <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {selectedTrade.reason}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedTrade.lesson && (
+                    <div className="text-xs space-y-1 pt-3 border-t dark:border-gray-800">
+                      <span className="font-semibold text-gray-400 uppercase tracking-wide">
+                        Lesson learned
+                      </span>
+                      <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {selectedTrade.lesson}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedTrade.mistake &&
+                    selectedTrade.mistake !== "NONE" && (
+                      <div className="text-xs space-y-1 pt-3 border-t dark:border-gray-800">
+                        <span className="font-semibold text-red-400 uppercase tracking-wide">
+                          Mistake Logged
+                        </span>
+                        <p className="text-red-600 dark:text-red-300">
+                          {selectedTrade.mistake}
+                        </p>
+                      </div>
+                    )}
+                </div>
+
+                <div className="space-y-3 pt-4 border-t dark:border-gray-800">
+                  <h5 className="text-sm font-semibold flex items-center">
+                    <MessageSquare className="h-4 w-4 mr-1 text-gray-400" />
+                    Journal Notes ({selectedTrade.notes.length})
+                  </h5>
+
+                  <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {selectedTrade.notes.map((note) => (
+                      <div
+                        key={note.id}
+                        className="p-3 bg-gray-50 dark:bg-gray-900 rounded relative group border dark:border-gray-855"
+                      >
+                        <p className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                          {note.content}
+                        </p>
+                        <div className="flex justify-between items-center mt-2 text-[10px] text-gray-400">
+                          <span>
+                            {new Date(note.createdAt).toLocaleDateString()}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteNote(note.id)}
+                            className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <form
+                  onSubmit={handleAddNote}
+                  className="space-y-2 pt-4 border-t dark:border-gray-850"
+                >
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Append Note
+                  </label>
+                  <textarea
+                    placeholder="Type new log note (Markdown format)..."
+                    value={newNoteContent}
+                    onChange={(e) => setNewNoteContent(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-1.5 text-xs bg-white dark:bg-gray-900 border dark:border-gray-800 rounded focus:ring-1 focus:ring-blue-500"
+                    required
+                  />
+                  <Button
+                    variant="secondary"
+                    type="submit"
+                    className="w-full text-xs"
+                  >
+                    Save Note
+                  </Button>
+                </form>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-400 text-sm">
+                Select a trade journal entry from the table to view setups,
+                lessons, and attach markdown notes.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
 // Journal Page
 const journalRoute = createRoute({
   getParentRoute: () => dashboardLayoutRoute,
   path: "/journal",
-  component: () => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Trading Journal</h2>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
-          Review setups, entry criteria, and post-trade reviews.
-        </p>
-      </div>
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center p-12 text-center">
-          <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4">
-            <BookOpen className="h-6 w-6" />
-          </div>
-          <h3 className="font-semibold text-lg mb-1">
-            No Journal Entries Found
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400 text-sm max-w-sm mb-4">
-            Log setups, trade triggers, and emotion states to identify
-            performance patterns.
-          </p>
-          <Button variant="primary">Log First Trade</Button>
-        </CardContent>
-      </Card>
-    </div>
-  ),
+  component: JournalPage,
 });
 
 // Settings Page
