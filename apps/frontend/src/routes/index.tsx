@@ -124,6 +124,22 @@ const fetchWithAuth = async <T,>(url: string): Promise<T> => {
   return res.json() as Promise<T>;
 };
 
+interface PerformanceAnalytics {
+  totalTrades: number;
+  winRate: number;
+  profitFactor: number;
+  avgGain: number;
+  avgLoss: number;
+  maxDrawdown: number;
+  sharpeRatio: number;
+  equityCurve: Array<{
+    date: string;
+    equity: number;
+    pnl: number;
+    cumulativePnl: number;
+  }>;
+}
+
 const DashboardPage = () => {
   const {
     data: margins,
@@ -161,13 +177,28 @@ const DashboardPage = () => {
     queryFn: () => fetchWithAuth<OrderInfo[]>("/api/portfolio/orders"),
   });
 
+  const {
+    data: analytics,
+    isLoading: isLoadingAnalytics,
+    error: errorAnalytics,
+  } = useQuery<PerformanceAnalytics>({
+    queryKey: ["performance-analytics"],
+    queryFn: () =>
+      fetchWithAuth<PerformanceAnalytics>("/api/analytics/performance"),
+  });
+
   const isLoading =
     isLoadingMargins ||
     isLoadingHoldings ||
     isLoadingPositions ||
-    isLoadingOrders;
+    isLoadingOrders ||
+    isLoadingAnalytics;
   const hasError =
-    errorMargins || errorHoldings || errorPositions || errorOrders;
+    errorMargins ||
+    errorHoldings ||
+    errorPositions ||
+    errorOrders ||
+    errorAnalytics;
 
   const totalHoldingsValue =
     holdings?.reduce((sum, h) => sum + h.quantity * h.lastPrice, 0) || 0;
@@ -175,6 +206,188 @@ const DashboardPage = () => {
   const activePositionsCount =
     positions?.filter((p) => p.quantity > 0).length || 0;
   const availableMargin = margins?.available || 0;
+
+  const renderWinRateGauge = (winRate: number) => {
+    const radius = 32;
+    const stroke = 6;
+    const normalizedRadius = radius - stroke * 2;
+    const circumference = normalizedRadius * 2 * Math.PI;
+    const strokeDashoffset = circumference - (winRate / 100) * circumference;
+
+    return (
+      <div className="relative flex items-center justify-center">
+        <svg
+          height={radius * 2}
+          width={radius * 2}
+          className="transform -rotate-90"
+        >
+          <circle
+            stroke="currentColor"
+            fill="transparent"
+            strokeWidth={stroke}
+            r={normalizedRadius}
+            cx={radius}
+            cy={radius}
+            className="text-gray-100 dark:text-gray-800"
+          />
+          <circle
+            stroke="#3b82f6"
+            fill="transparent"
+            strokeWidth={stroke}
+            strokeDasharray={circumference + " " + circumference}
+            style={{ strokeDashoffset }}
+            r={normalizedRadius}
+            cx={radius}
+            cy={radius}
+            strokeLinecap="round"
+            className="transition-all duration-500"
+          />
+        </svg>
+        <span className="absolute text-xs font-bold">
+          {Math.round(winRate)}%
+        </span>
+      </div>
+    );
+  };
+
+  const renderEquityCurve = () => {
+    if (
+      !analytics ||
+      !analytics.equityCurve ||
+      analytics.equityCurve.length < 2
+    ) {
+      return (
+        <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
+          Insufficient trade data to render equity curve. Log closed trades in
+          your journal.
+        </div>
+      );
+    }
+
+    const curve = analytics.equityCurve;
+    const values = curve.map((c) => c.equity);
+    const minVal = Math.min(...values) * 0.99;
+    const maxVal = Math.max(...values) * 1.01;
+    const valRange = maxVal - minVal;
+
+    const width = 600;
+    const height = 180;
+    const paddingLeft = 60;
+    const paddingRight = 20;
+    const paddingTop = 10;
+    const paddingBottom = 20;
+
+    const chartWidth = width - paddingLeft - paddingRight;
+    const chartHeight = height - paddingTop - paddingBottom;
+
+    const points = curve.map((c, i) => {
+      const x = paddingLeft + (i / (curve.length - 1)) * chartWidth;
+      const y =
+        paddingTop +
+        chartHeight -
+        ((c.equity - minVal) / valRange) * chartHeight;
+      return { x, y, ...c };
+    });
+
+    const linePath = points
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+      .join(" ");
+    const areaPath = `${linePath} L ${points[points.length - 1].x} ${paddingTop + chartHeight} L ${points[0].x} ${paddingTop + chartHeight} Z`;
+
+    const yTicks = 4;
+    const ticks = Array.from({ length: yTicks }, (_, i) => {
+      const val = minVal + (i / (yTicks - 1)) * valRange;
+      const y = paddingTop + chartHeight - (i / (yTicks - 1)) * chartHeight;
+      return { val, y };
+    });
+
+    return (
+      <div className="relative w-full">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="w-full h-auto overflow-visible select-none"
+        >
+          <defs>
+            <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+
+          {ticks.map((t, i) => (
+            <g key={i} className="opacity-40">
+              <line
+                x1={paddingLeft}
+                y1={t.y}
+                x2={width - paddingRight}
+                y2={t.y}
+                stroke="currentColor"
+                strokeWidth="0.5"
+                strokeDasharray="4 4"
+                className="text-gray-300 dark:text-gray-800"
+              />
+              <text
+                x={paddingLeft - 8}
+                y={t.y + 3}
+                textAnchor="end"
+                className="fill-gray-400 text-[8px] font-medium"
+              >
+                ₹{Math.round(t.val).toLocaleString("en-IN")}
+              </text>
+            </g>
+          ))}
+
+          <path d={areaPath} fill="url(#areaGradient)" />
+          <path
+            d={linePath}
+            fill="none"
+            stroke="#3b82f6"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+
+          {points.map((p, i) => (
+            <g key={i} className="group cursor-pointer">
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r="3"
+                className="fill-blue-500 stroke-white dark:stroke-gray-900 stroke-2 hover:r-4 transition-all duration-150"
+              />
+              <title>
+                {`${p.date}: ₹${p.equity.toLocaleString("en-IN")} (${p.pnl >= 0 ? "+" : ""}₹${p.pnl.toLocaleString("en-IN")})`}
+              </title>
+            </g>
+          ))}
+
+          {points
+            .filter(
+              (_, i) =>
+                i === 0 ||
+                i === points.length - 1 ||
+                (points.length > 5 && i === Math.round(points.length / 2)),
+            )
+            .map((p, i) => (
+              <text
+                key={i}
+                x={p.x}
+                y={height - 2}
+                textAnchor={
+                  i === 0
+                    ? "start"
+                    : i === 1 && points.length > 2
+                      ? "middle"
+                      : "end"
+                }
+                className="fill-gray-400 text-[8px] font-semibold"
+              >
+                {p.date}
+              </text>
+            ))}
+        </svg>
+      </div>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -206,10 +419,11 @@ const DashboardPage = () => {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-center text-red-600 dark:text-red-400">
         <ShieldAlert className="h-12 w-12 mb-4" />
-        <h3 className="text-xl font-bold mb-2">Error Loading Portfolio</h3>
+        <h3 className="text-xl font-bold mb-2">Error Loading Dashboard</h3>
         <p className="text-sm text-gray-500 max-w-sm mb-4">
-          We encountered an issue fetching your Zerodha Kite portfolio details.
-          Make sure your environment variables are configured.
+          We encountered an issue fetching your Zerodha Kite portfolio or
+          performance statistics. Verify API endpoints and configuration
+          details.
         </p>
         <Button variant="primary" onClick={() => window.location.reload()}>
           Retry Connection
@@ -223,10 +437,10 @@ const DashboardPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">
-            Portfolio Summary
+            Performance Analytics
           </h2>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
-            Welcome back to your trading desk.
+            Overview of your trading edge and portfolio health.
           </p>
         </div>
         <div className="flex space-x-2">
@@ -236,7 +450,7 @@ const DashboardPage = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -312,6 +526,92 @@ const DashboardPage = () => {
               <TrendingDown className="h-3 w-3 mr-1" />₹
               {(margins?.utilized || 0).toLocaleString("en-IN")} utilized
             </p>
+          </CardContent>
+        </Card>
+
+        <Card className="flex items-center justify-between p-4 pb-2">
+          <div>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Win Rate
+            </span>
+            <p className="text-xs text-gray-400 mt-1">Closed journal trades</p>
+          </div>
+          {analytics && renderWinRateGauge(analytics.winRate)}
+        </Card>
+      </div>
+
+      {/* Analytics Curve Section */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Equity Growth Curve</CardTitle>
+          </CardHeader>
+          <CardContent>{renderEquityCurve()}</CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Performance Audit</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-between items-center py-2 border-b dark:border-gray-800">
+              <span className="text-xs text-gray-400 font-semibold uppercase">
+                Profit Factor
+              </span>
+              <span
+                className={`text-sm font-bold ${analytics && analytics.profitFactor >= 1.5 ? "text-green-600" : "text-gray-500"}`}
+              >
+                {analytics?.profitFactor.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b dark:border-gray-800">
+              <span className="text-xs text-gray-400 font-semibold uppercase">
+                Sharpe Ratio
+              </span>
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                {analytics?.sharpeRatio.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b dark:border-gray-800">
+              <span className="text-xs text-gray-400 font-semibold uppercase">
+                Max Drawdown
+              </span>
+              <span
+                className={`text-sm font-bold ${analytics && analytics.maxDrawdown > 10 ? "text-red-500" : "text-green-600"}`}
+              >
+                {analytics?.maxDrawdown.toFixed(1)}%
+              </span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b dark:border-gray-800">
+              <span className="text-xs text-gray-400 font-semibold uppercase">
+                Avg Gain
+              </span>
+              <span className="text-sm font-bold text-green-600">
+                +₹
+                {analytics?.avgGain.toLocaleString("en-IN", {
+                  maximumFractionDigits: 0,
+                })}
+              </span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b dark:border-gray-800">
+              <span className="text-xs text-gray-400 font-semibold uppercase">
+                Avg Loss
+              </span>
+              <span className="text-sm font-bold text-red-500">
+                -₹
+                {analytics?.avgLoss.toLocaleString("en-IN", {
+                  maximumFractionDigits: 0,
+                })}
+              </span>
+            </div>
+            <div className="flex justify-between items-center py-2">
+              <span className="text-xs text-gray-400 font-semibold uppercase">
+                Total Trades
+              </span>
+              <span className="text-sm font-bold">
+                {analytics?.totalTrades}
+              </span>
+            </div>
           </CardContent>
         </Card>
       </div>
