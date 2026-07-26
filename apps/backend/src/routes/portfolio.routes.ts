@@ -5,6 +5,8 @@ import {
   getHoldings,
   getPositions,
   getOrders,
+  placeOrder,
+  cancelOrder,
 } from "../controllers/portfolio.controller.js";
 
 const router = Router();
@@ -16,5 +18,7 @@ router.get("/margins", getMargins);
 router.get("/holdings", getHoldings);
 router.get("/positions", getPositions);
 router.get("/orders", getOrders);
+router.post("/orders", placeOrder);
+router.delete("/orders/:id", cancelOrder);
 
 export default router;

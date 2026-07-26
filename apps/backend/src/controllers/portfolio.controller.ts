@@ -69,3 +69,55 @@ export const getOrders = async (
     next(error);
   }
 };
+
+export const placeOrder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const token = req.kiteAccessToken;
+  if (!token)
+    return next(new UnauthorizedError("No active Kite Connect session found"));
+
+  try {
+    const {
+      exchange,
+      tradingsymbol,
+      transactionType,
+      quantity,
+      price,
+      orderType,
+      product,
+    } = req.body;
+    const result = await kiteService.placeOrder(token, {
+      exchange,
+      tradingsymbol,
+      transactionType,
+      quantity: Number(quantity),
+      price: price ? Number(price) : undefined,
+      orderType,
+      product,
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const cancelOrder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const token = req.kiteAccessToken;
+  if (!token)
+    return next(new UnauthorizedError("No active Kite Connect session found"));
+
+  try {
+    const { id } = req.params;
+    const result = await kiteService.cancelOrder(token, id);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};

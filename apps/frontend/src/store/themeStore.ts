@@ -11,9 +11,7 @@ export const useThemeStore = create<ThemeState>((set) => {
     if (typeof window === "undefined") return "light";
     const saved = localStorage.getItem("theme");
     if (saved === "light" || saved === "dark") return saved;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
+    return "dark";
   };
 
   const initialTheme = getInitialTheme();

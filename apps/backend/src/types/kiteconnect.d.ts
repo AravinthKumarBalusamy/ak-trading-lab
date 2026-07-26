@@ -24,5 +24,7 @@ declare module "kiteconnect" {
     public getHoldings(): Promise<unknown>;
     public getPositions(): Promise<unknown>;
     public getOrders(): Promise<unknown>;
+    public placeOrder(variety: string, params: unknown): Promise<unknown>;
+    public cancelOrder(variety: string, order_id: string): Promise<unknown>;
   }
 }

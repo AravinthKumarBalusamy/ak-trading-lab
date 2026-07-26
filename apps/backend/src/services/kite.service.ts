@@ -236,6 +236,62 @@ export class KiteService {
     await cacheService.set(cacheKey, orders, 5); // 5s TTL
     return orders;
   }
+
+  public async placeOrder(
+    accessToken: string,
+    params: {
+      exchange: string;
+      tradingsymbol: string;
+      transactionType: "BUY" | "SELL";
+      quantity: number;
+      price?: number;
+      orderType: "MARKET" | "LIMIT";
+      product: "MIS" | "CNC";
+    },
+  ): Promise<{ orderId: string }> {
+    if (
+      accessToken === "mock_kite_access_token_xyz789" ||
+      env.NODE_ENV === "test"
+    ) {
+      const orderId = `MOCK_ORD_${Math.floor(100000 + Math.random() * 900000)}`;
+      await cacheService.del(`orders:${accessToken}`);
+      await cacheService.del(`positions:${accessToken}`);
+      return { orderId };
+    } else {
+      const kc = this.getKiteClient(accessToken);
+      const res = (await kc.placeOrder("regular", {
+        exchange: params.exchange,
+        tradingsymbol: params.tradingsymbol,
+        transaction_type: params.transactionType,
+        quantity: params.quantity,
+        order_type: params.orderType,
+        product: params.product,
+        price: params.price,
+        validity: "DAY",
+      })) as { order_id?: string };
+      await cacheService.del(`orders:${accessToken}`);
+      await cacheService.del(`positions:${accessToken}`);
+      return { orderId: res.order_id || String(res) };
+    }
+  }
+
+  public async cancelOrder(
+    accessToken: string,
+    orderId: string,
+  ): Promise<{ orderId: string }> {
+    if (
+      accessToken === "mock_kite_access_token_xyz789" ||
+      env.NODE_ENV === "test"
+    ) {
+      await cacheService.del(`orders:${accessToken}`);
+      return { orderId };
+    } else {
+      const kc = this.getKiteClient(accessToken);
+      await kc.cancelOrder("regular", orderId);
+      await cacheService.del(`orders:${accessToken}`);
+      return { orderId };
+    }
+  }
 }
 
 export const kiteService = new KiteService();
